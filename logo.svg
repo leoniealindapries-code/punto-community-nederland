@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Punto Community Nederland">
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2f2f2"/>
+      <stop offset=".5" stop-color="#9aa0a6"/>
+      <stop offset="1" stop-color="#e6e6e6"/>
+    </linearGradient>
+    <radialGradient id="core" cx=".5" cy=".38" r=".7">
+      <stop offset="0" stop-color="#b3122a"/>
+      <stop offset="1" stop-color="#5e0613"/>
+    </radialGradient>
+    <clipPath id="inner"><circle cx="100" cy="100" r="80"/></clipPath>
+  </defs>
+  <circle cx="100" cy="100" r="96" fill="url(#ring)"/>
+  <circle cx="100" cy="100" r="86" fill="#1a1a1a"/>
+  <circle cx="100" cy="100" r="80" fill="url(#core)"/>
+  <g clip-path="url(#inner)">
+    <rect x="20" y="150" width="54" height="40" fill="#1f9d55"/>
+    <rect x="74" y="150" width="52" height="40" fill="#ffffff"/>
+    <rect x="126" y="150" width="54" height="40" fill="#d7263d"/>
+  </g>
+  <!-- simpel hatchback-silhouet -->
+  <path d="M46 120 L58 104 Q66 94 80 92 L118 90 Q132 90 142 100 L152 110 Q160 112 160 120 L160 126 L40 126 L40 122 Z"
+        fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" opacity=".9"/>
+  <circle cx="64" cy="128" r="9" fill="#1a1a1a" stroke="#fff" stroke-width="3"/>
+  <circle cx="136" cy="128" r="9" fill="#1a1a1a" stroke="#fff" stroke-width="3"/>
+  <text x="100" y="78" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900"
+        font-size="44" fill="#ffffff" letter-spacing="3">PCN</text>
+</svg>

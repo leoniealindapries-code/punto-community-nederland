@@ -1,0 +1,9 @@
+{
+  "name": "Punto Community Nederland",
+  "short_name": "Punto NL",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#121214",
+  "theme_color": "#121214",
+  "icons": [{ "src": "logo.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
