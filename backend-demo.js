@@ -1,7 +1,7 @@
 // Demomodus: alles draait in je browser met nepdata. Niets wordt gedeeld.
 import { START_SPOTS } from "./spots-start.js";
 
-const KEY = "pcn-demo-v2";
+const KEY = "pcn-demo-v3";
 const ME = "me";
 let idc = 1000;
 const nid = () => "d" + (idc++);
@@ -38,7 +38,10 @@ function seed() {
     members, locations, priv,
     meets: [{ id: meetId, title: "Winter meet", when: toLocalInput(when), note: "Neem je beste rally-verhalen mee!", createdBy: "u0", createdByName: "Sanne", spot: null }],
     attendees: { [meetId]: attendees },
-    spots: START_SPOTS.map((s) => ({ id: nid(), ...s, approx: true })),
+    spots: [
+      ...START_SPOTS.map((s) => ({ id: nid(), ...s, approx: true, status: "approved" })),
+      { id: nid(), name: "McDonald's Gouda", type: "mcd", lat: 52.0130, lng: 4.6890, status: "pending", suggested_by_name: "Daan", added_by: "u5" },
+    ],
     messages: [
       { id: nid(), channel: "algemeen", uid: "u1", name: "Mehmet", text: "Welkom allemaal in de Punto app! 🚗", ts: Date.now() - 3600e3 },
       { id: nid(), channel: "algemeen", uid: "u0", name: "Sanne", text: "Wie gaat er mee naar de winter meet?", ts: Date.now() - 1800e3 },
@@ -115,7 +118,9 @@ export const backend = {
   },
 
   watchSpots(cb) { return watch(() => cb(clone(S.spots))); },
-  async addSpot(s) { S.spots.push({ id: nid(), ...s }); save(); },
+  async addSpot(s) { S.spots.push({ id: nid(), ...s, status: "approved", added_by: ME }); save(); },
+  async suggestSpot(s, byName) { S.spots.push({ id: nid(), name: s.name, type: s.type, lat: s.lat, lng: s.lng, status: "pending", suggested_by_name: byName, added_by: ME }); save(); },
+  async approveSpot(id) { const x = S.spots.find((y) => y.id === id); if (x) x.status = "approved"; save(); },
   async updateSpot(id, s) { const x = S.spots.find((y) => y.id === id); if (x) Object.assign(x, s); save(); },
   async deleteSpot(id) { S.spots = S.spots.filter((s) => s.id !== id); save(); },
   async addSpotsBulk(list) { list.forEach((s) => S.spots.push({ id: nid(), ...s, approx: true })); save(); },

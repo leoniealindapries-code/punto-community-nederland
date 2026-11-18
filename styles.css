@@ -147,3 +147,8 @@ textarea { min-height: 70px; resize: vertical; }
 .msg-row.mine { justify-content: flex-end; }
 .msg-row .msg { max-width: 78%; }
 .tabs button { font-size: 11px; }
+.badge { position: absolute; margin-left: 18px; margin-top: -40px; background: var(--red); color: #fff; border-radius: 99px; font-size: 10px; padding: 1px 6px; }
+.tabs button { position: relative; }
+
+/* verborgen elementen echt verbergen (ook knoppen met display:flex) */
+[hidden] { display: none !important; }

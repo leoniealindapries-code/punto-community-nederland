@@ -70,7 +70,9 @@ create table if not exists public.spots (
   lat double precision not null,
   lng double precision not null,
   approx boolean not null default false,
-  added_by uuid default auth.uid()
+  added_by uuid default auth.uid(),
+  status text not null default 'approved' check (status in ('approved', 'pending')),
+  suggested_by_name text
 );
 
 create table if not exists public.messages (
@@ -213,7 +215,12 @@ create policy "eigen aanmelding wijzigen" on public.attendees for update to auth
 create policy "aanmelding verwijderen" on public.attendees for delete to authenticated
   using (user_id = auth.uid() or public.is_admin());
 
-create policy "leden zien plekken" on public.spots for select to authenticated using (public.is_member());
+create policy "leden zien plekken" on public.spots for select to authenticated
+  using (public.is_admin() or (public.is_member() and (status = 'approved' or added_by = auth.uid())));
+create policy "leden stellen plek voor" on public.spots for insert to authenticated
+  with check (public.is_member() and status = 'pending' and added_by = auth.uid());
+create policy "eigen voorstel intrekken" on public.spots for delete to authenticated
+  using (added_by = auth.uid() and status = 'pending');
 create policy "beheerder beheert plekken" on public.spots for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 

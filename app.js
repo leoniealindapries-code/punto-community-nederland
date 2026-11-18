@@ -110,6 +110,10 @@ function avatarHTML(uid, name, cls = "", photo) {
   return p ? `<div class="avatar ${cls}" style="background-image:url('${p}')"></div>`
            : `<div class="avatar ${cls}">${esc(initials(name))}</div>`;
 }
+// Alleen goedgekeurde meetplekken tellen mee voor de voorstellen
+const approvedSpots = () => st.spots.filter((s) => (s.status || "approved") === "approved");
+const pendingSpots = () => st.spots.filter((s) => s.status === "pending");
+
 function personPin(uid, name) {
   const p = photoOf(uid), me = uid === st.user?.uid;
   const html = p ? `<div class="pin photo ${me ? "me" : ""}" style="background-image:url('${p}')"></div>`
@@ -155,7 +159,13 @@ async function startApp() {
   view().innerHTML = `<div class="empty">Laden…</div>`;
   await window.leafletReady;
   st.priv = await backend.getMyPrivate().catch(() => null);
-  const refresh = () => currentView?.update?.();
+  // Rood bolletje op Beheer als er iets op goedkeuring wacht
+  const badge = () => {
+    if (!st.isAdmin) return;
+    const n = st.members.filter((m) => m.status === "pending").length + pendingSpots().length;
+    $("#tabBeheer").innerHTML = `<span>🛠️</span>Beheer${n ? ` <b class="badge">${n}</b>` : ""}`;
+  };
+  const refresh = () => { badge(); currentView?.update?.(); };
   globalSubs.push(
     backend.watchMembers((m) => { st.members = m; refresh(); }),
     backend.watchLocations((l) => { st.locations = l; refresh(); }),
@@ -166,14 +176,14 @@ async function startApp() {
   if (!st.priv?.area) toast("Stel eerst je profiel en woonwijk in 👇", 3500);
 }
 
-$$("#tabs button").forEach((b) => b.addEventListener("click", () => { st.meetId = null; go(b.dataset.tab); }));
+$$("#tabs button").forEach((b) => b.addEventListener("click", () => { st.meetId = null; st.suggest = false; go(b.dataset.tab); }));
 
 function go(tab) {
   st.tab = tab;
   $$("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   cleanupView();
   window.scrollTo(0, 0);
-  const views = { kaart: viewMap, meets: () => (st.meetId ? viewMeet(st.meetId) : viewMeets()), chat: viewChat, instellingen: viewSettings, beheer: viewAdmin };
+  const views = { kaart: viewMap, meets: () => (st.meetId ? viewMeet(st.meetId) : st.suggest ? viewSuggest() : viewMeets()), chat: viewChat, instellingen: viewSettings, beheer: viewAdmin };
   currentView = (views[tab] || viewMap)() || null;
 }
 
@@ -324,7 +334,13 @@ function viewMeets() {
     </form>
     <div id="upcoming"></div>
     <h3>Afgelopen</h3>
-    <div id="past"></div>`;
+    <div id="past"></div>
+    <div class="card row" style="margin-top:18px">
+      <span>📍 Ken je een goede meetplek? McDonald's, parkeerplaats of industrieterrein?</span>
+      <span class="spacer"></span>
+      <button class="btn small secondary" id="toSuggest">Plek voorstellen</button>
+    </div>`;
+  $("#toSuggest").onclick = () => { st.suggest = true; go("meets"); };
   $("#newBtn").onclick = () => { $("#newForm").hidden = false; $("#mTitle").focus(); };
   $("#cancelNew").onclick = () => ($("#newForm").hidden = true);
   $("#newForm").onsubmit = (e) => {
@@ -453,7 +469,7 @@ function viewMeet(meetId) {
     const center = overview?.center || null;
     let ranked = [];
     if (center) {
-      const all = [...st.spots, ...(st.liveSpots[meetId] || [])];
+      const all = [...approvedSpots(), ...(st.liveSpots[meetId] || [])];
       ranked = rankSpots(all, center).slice(0, 3);
     }
     $("#suggest").innerHTML = !center
@@ -469,7 +485,7 @@ function viewMeet(meetId) {
               ${canManage() ? `<button class="btn small" data-choose="${i}">Kies deze plek</button>` : ""}
               <button class="btn small secondary" data-show="${i}">Op kaart</button>
               <a class="btn small ghost" href="${mapsLink(s)}" target="_blank" rel="noopener">Bekijk ↗</a>
-              ${s.live && st.isAdmin ? `<button class="btn small ghost" data-save="${i}">+ Bewaar in lijst</button>` : ""}
+              ${s.live ? `<button class="btn small ghost" data-save="${i}">${st.isAdmin ? "+ Bewaar in lijst" : "+ Stel voor als vaste plek"}</button>` : ""}
             </div>
           </div>`).join("");
     $$("[data-choose]").forEach((b) => b.onclick = () => {
@@ -479,7 +495,8 @@ function viewMeet(meetId) {
     $$("[data-show]").forEach((b) => b.onclick = () => { const s = ranked[+b.dataset.show]; map?.setView([s.lat, s.lng], 13); $("#map").scrollIntoView({ behavior: "smooth", block: "center" }); });
     $$("[data-save]").forEach((b) => b.onclick = () => {
       const s = ranked[+b.dataset.save];
-      run(() => backend.addSpot({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, approx: false }), "Opgeslagen in de lijst");
+      if (st.isAdmin) run(() => backend.addSpot({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, approx: false }), "Opgeslagen in de lijst");
+      else run(() => backend.suggestSpot(s, st.member.name), "Voorstel verstuurd naar de beheerder 👍");
     });
 
     // Wie
@@ -530,6 +547,63 @@ function viewMeet(meetId) {
   );
   $("#toChat").onclick = () => { st.chatChannel = meetId; st.meetId = null; go("chat"); };
   update();
+  return { update };
+}
+
+// ------------------------------------------------------------------ PLEK VOORSTELLEN
+function viewSuggest() {
+  view().innerHTML = `
+    <button class="back" id="back">← Terug naar meets</button>
+    <h1>Meetplek voorstellen</h1>
+    <p class="small muted">Tik op de kaart waar de plek is, geef hem een naam en kies het soort plek. ${st.isAdmin ? "Als beheerder wordt de plek direct toegevoegd." : "De beheerder bekijkt je voorstel. Na goedkeuring kan de app hem voorstellen voor meets."}</p>
+    <div id="sgMap" class="map short"></div>
+    <div class="legend"><span>🔵 Bestaande meetplekken</span><span>🟢 Jouw nieuwe plek</span></div>
+    <div class="card stack">
+      <div><label>Naam van de plek</label><input type="text" id="sgName" maxlength="80" placeholder="Bijv. McDonald's Gouda of Carpoolplaats A12"></div>
+      <div><label>Soort plek</label><select id="sgType"><option value="mcd">McDonald's</option><option value="parking">Parkeerplaats</option><option value="industrie">Industrieterrein</option></select></div>
+      <button class="btn block" id="sgSend" disabled>Tik eerst op de kaart</button>
+    </div>
+    <h2>Mijn voorstellen</h2>
+    <div class="card" id="mine"></div>`;
+  $("#back").onclick = () => { st.suggest = false; go("meets"); };
+  const map = makeMap($("#sgMap"));
+  const layer = map ? L.layerGroup().addTo(map) : null;
+  let pos = null, marker = null;
+  map?.on("click", (e) => {
+    pos = { lat: +e.latlng.lat.toFixed(5), lng: +e.latlng.lng.toFixed(5) };
+    if (marker) marker.setLatLng(e.latlng);
+    else marker = L.marker(e.latlng, { icon: pin("chosen", "+", 40), draggable: true, zIndexOffset: 1000 }).addTo(map)
+      .on("dragend", (ev) => { const p = ev.target.getLatLng(); pos = { lat: +p.lat.toFixed(5), lng: +p.lng.toFixed(5) }; });
+    $("#sgSend").disabled = false; $("#sgSend").textContent = st.isAdmin ? "Plek toevoegen" : "Voorstel versturen";
+  });
+  $("#sgSend").onclick = () => {
+    const name = $("#sgName").value.trim();
+    if (!pos) return toast("Tik eerst op de kaart");
+    if (!name) return toast("Geef de plek een naam");
+    const spot = { name, type: $("#sgType").value, lat: pos.lat, lng: pos.lng };
+    run(async () => {
+      if (st.isAdmin) await backend.addSpot({ ...spot, approx: false });
+      else await backend.suggestSpot(spot, st.member.name);
+      $("#sgName").value = ""; marker?.remove(); marker = null; pos = null;
+      $("#sgSend").disabled = true; $("#sgSend").textContent = "Tik eerst op de kaart";
+    }, st.isAdmin ? "Plek toegevoegd" : "Voorstel verstuurd 👍");
+  };
+  function update() {
+    const mine = pendingSpots().filter((s) => s.added_by === st.user.uid);
+    $("#mine").innerHTML = mine.length ? mine.map((s) => `
+      <div class="list-item"><span style="font-size:20px">${TYPE_ICON[s.type] || "📍"}</span>
+        <div><b>${esc(s.name)}</b><div class="small muted">${TYPE_LABEL[s.type] || ""}</div></div><span class="spacer"></span>
+        <span class="chip yellow">wacht op goedkeuring</span>
+        <button class="btn small ghost" data-cancel="${esc(s.id)}">Intrekken</button></div>`).join("")
+      : `<p class="muted" style="margin:0">Je hebt geen openstaande voorstellen.</p>`;
+    $$("[data-cancel]").forEach((b) => b.onclick = () => run(() => backend.deleteSpot(b.dataset.cancel), "Voorstel ingetrokken"));
+    if (layer) {
+      layer.clearLayers();
+      approvedSpots().forEach((s) => L.marker([s.lat, s.lng], { icon: pin("spot", TYPE_ICON[s.type] || "📍", 28) }).bindPopup(esc(s.name)).addTo(layer));
+    }
+  }
+  update();
+  viewCleanup.push(() => map?.remove());
   return { update };
 }
 
@@ -719,6 +793,8 @@ function viewAdmin() {
     <div class="card" id="pending"></div>
     <h2>Leden</h2>
     <div class="card" id="members"></div>
+    <h2>Voorgestelde meetplekken</h2>
+    <div class="card" id="pendingSpots"></div>
     <h2>Meetplekken</h2>
     <div class="card stack">
       <p class="small muted" style="margin:0">Tik op de kaart om een plek toe te voegen. Bij <span class="chip yellow">bij benadering</span>: klik op “Toon”, sleep de speld naar de juiste plek en klik op “Klopt”.</p>
@@ -784,7 +860,17 @@ function viewAdmin() {
       run(() => backend.removeMember(b.dataset.rm), "Verwijderd");
     });
 
-    const spots = [...st.spots].sort((a, b) => (b.approx ? 1 : 0) - (a.approx ? 1 : 0) || a.name.localeCompare(b.name));
+    const pend = pendingSpots();
+    $("#pendingSpots").innerHTML = pend.length ? pend.map((s) => `
+      <div class="list-item"><span style="font-size:20px">${TYPE_ICON[s.type] || "📍"}</span>
+        <div><b>${esc(s.name)}</b><div class="small muted">voorgesteld door ${esc(nameOf(s.added_by, s.suggested_by_name))}</div></div><span class="spacer"></span>
+        <button class="btn small secondary" data-show="${esc(s.id)}">Toon</button>
+        <button class="btn small green" data-okpend="${esc(s.id)}">Toelaten</button>
+        <button class="btn small ghost" data-delspot="${esc(s.id)}">Weigeren</button></div>`).join("")
+      : `<p class="muted" style="margin:0">Geen openstaande voorstellen.</p>`;
+    $$("[data-okpend]").forEach((b) => b.onclick = () => run(() => backend.approveSpot(b.dataset.okpend), "Plek goedgekeurd ✅"));
+
+    const spots = [...approvedSpots()].sort((a, b) => (b.approx ? 1 : 0) - (a.approx ? 1 : 0) || a.name.localeCompare(b.name));
     $("#spots").innerHTML = spots.length ? spots.map((s) => `
       <div class="list-item"><span style="font-size:20px">${TYPE_ICON[s.type] || "📍"}</span>
         <div><b>${esc(s.name)}</b>${s.approx ? ` <span class="chip yellow">bij benadering</span>` : ""}</div><span class="spacer"></span>
@@ -807,7 +893,8 @@ function viewAdmin() {
 
     if (layer) {
       layer.clearLayers();
-      st.spots.forEach((s) => L.marker([s.lat, s.lng], { icon: pin("spot", TYPE_ICON[s.type] || "📍", 28) }).bindPopup(esc(s.name)).addTo(layer));
+      st.spots.forEach((s) => L.marker([s.lat, s.lng], { icon: pin(s.status === "pending" ? "center" : "spot", TYPE_ICON[s.type] || "📍", 28) })
+        .bindPopup(esc(s.name) + (s.status === "pending" ? "<br><i>voorstel</i>" : "")).addTo(layer));
     }
   }
   update();

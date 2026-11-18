@@ -122,11 +122,16 @@ export const backend = {
 
   // ---------- Meetplekken ----------
   watchSpots(cb) { return live("spots", async () => check(await sb.from("spots").select("*")), cb); },
-  async addSpot(s) { check(await sb.from("spots").insert({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, approx: !!s.approx })); },
+  async addSpot(s) { check(await sb.from("spots").insert({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, approx: !!s.approx, status: "approved" })); },
+  // Lid stelt een plek voor; telt pas mee na goedkeuring door de beheerder
+  async suggestSpot(s, byName) {
+    check(await sb.from("spots").insert({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, status: "pending", suggested_by_name: byName }));
+  },
+  async approveSpot(id) { check(await sb.from("spots").update({ status: "approved" }).eq("id", id)); },
   async updateSpot(id, s) { check(await sb.from("spots").update(s).eq("id", id)); },
   async deleteSpot(id) { check(await sb.from("spots").delete().eq("id", id)); },
   async addSpotsBulk(list) {
-    check(await sb.from("spots").insert(list.map((s) => ({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, approx: true }))));
+    check(await sb.from("spots").insert(list.map((s) => ({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, approx: true, status: "approved" }))));
   },
 
   // ---------- Chat ----------

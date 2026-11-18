@@ -9,7 +9,7 @@ Dit is een besloten web-app voor de groepsapp, met vijf tabs:
 
 De app draait op **GitHub Pages**. De gegevens en het inloggen lopen via **Supabase**.
 
-Zolang `js/config.js` niet is ingevuld, draait de app in **demomodus** met nepleden.
+Zolang `config.js` niet is ingevuld, draait de app in **demomodus** met nepleden.
 
 ---
 
@@ -41,7 +41,7 @@ Zolang `js/config.js` niet is ingevuld, draait de app in **demomodus** met neple
 1. Klik bovenaan in Supabase op **Connect**, of ga naar **Project Settings → Data API**, en kopieer de **Project URL**. Die ziet eruit als `https://abcdefgh.supabase.co`.
 2. Ga naar **Project Settings → API Keys** en kopieer de **Publishable key**. Die begint met `sb_publishable_`.
    **Let op:** gebruik nooit de *secret key*.
-3. Open op GitHub het bestand `js/config.js` en klik op het **potloodje ✏️**.
+3. Open op GitHub het bestand `config.js` en klik op het **potloodje ✏️**.
 4. Vervang de twee `VUL_IN` door de Project URL en de publishable key. Laat de aanhalingstekens staan.
 5. Klik op **Commit changes**.
 
@@ -67,9 +67,13 @@ Zolang `js/config.js` niet is ingevuld, draait de app in **demomodus** met neple
 ## Hoe werkt het?
 - **Woonwijk:** iedereen zoekt zijn wijk of buurt op in de officiële lijst van de overheid (PDOK). Straten en adressen kun je niet invullen.
 - **Onzichtbaar:** wie onzichtbaar is, staat niet op de kaart. Bij een meet telt zijn of haar wijk wel mee. De database rekent het midden zelf uit, dus de wijk van een onzichtbaar lid komt nooit op de telefoon van iemand anders. Het midden wordt afgerond op ongeveer 5 km, zodat niemand een wijk kan terugrekenen.
+- **Meetplekken voorstellen:** leden tikken in **Meets → Plek voorstellen** een plek aan op de kaart. Jij keurt hem goed of af in **Beheer → Voorgestelde meetplekken**. Wacht er iets op goedkeuring, dan staat er een rood bolletje op de tab **Beheer**. Pas na goedkeuring kan een plek als meetplek worden voorgesteld.
 - **Meetplek:** de app kiest de dichtstbijzijnde McDonald's, parkeerplaats of het dichtstbijzijnde industrieterrein bij het midden. Met **Zoek live** zoekt hij ook in OpenStreetMap. Wie niet komt, telt niet mee.
 - **Route:** tik op de gekozen meetplek (🏁 of de groene kaart), dan opent Google Maps.
 - **Beveiliging:** alleen goedgekeurde leden kunnen iets lezen of schrijven. Leden kunnen zichzelf niet goedkeuren en zich niet voordoen als een ander.
+
+## Updates
+- **Update 1 (plekken voorstellen):** had je `supabase.sql` al uitgevoerd vóór deze update? Voer dan één keer `update-1-plekken-voorstellen.sql` uit in de SQL Editor. Bij een nieuwe installatie is dat niet nodig, want het zit al in `supabase.sql`.
 
 ## Goed om te weten
 - **Pauzeren:** een gratis Supabase-project wordt gepauzeerd als het 7 dagen niet gebruikt is. Je krijgt dan eerst een waarschuwingsmail. Met een actieve groep gebeurt dit niet snel. Gebeurt het toch, open dan het project in Supabase en klik op **Resume project**. Alle gegevens zijn er dan nog.
