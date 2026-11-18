@@ -149,11 +149,37 @@ export const backend = {
   async sendTestPush() { check(await sb.rpc("send_test_push")); },
 
   // ---------- Chat ----------
+  // Zuinige chat: één keer de laatste 150 berichten ophalen, daarna komt
+  // alleen elk NIEUW bericht binnen (scheelt ±99% dataverkeer).
   watchMessages(channel, cb) {
-    return live("messages", async () => {
-      const rows = check(await sb.from("messages").select("*").eq("channel", channel).order("ts", { ascending: false }).limit(150));
-      return rows.reverse().map((m) => ({ id: m.id, uid: m.user_id, name: m.name, text: m.text, ts: m.ts }));
-    }, cb);
+    let alive = true, list = [], connectedOnce = false;
+    const toMsg = (m) => ({ id: m.id, uid: m.user_id, name: m.name, text: m.text, ts: m.ts });
+    const emit = () => { if (alive) cb(list.slice()); };
+    const loadAll = async () => {
+      try {
+        const rows = check(await sb.from("messages").select("*").eq("channel", channel).order("ts", { ascending: false }).limit(150));
+        list = rows.reverse().map(toMsg);
+        emit();
+      } catch (e) { console.error("chat", e); }
+    };
+    const ch = sb.channel(`chat-${++chanNr}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `channel=eq.${channel}` }, ({ new: m }) => {
+        if (!m || list.some((x) => x.id === m.id)) return;
+        list.push(toMsg(m));
+        if (list.length > 300) list = list.slice(-300);
+        emit();
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, ({ old }) => {
+        const before = list.length;
+        list = list.filter((x) => x.id !== old?.id);
+        if (list.length !== before) emit();
+      })
+      .subscribe((status) => {
+        // Na een verbroken verbinding (bijv. telefoon uit slaapstand) één keer bijwerken
+        if (status === "SUBSCRIBED") { if (connectedOnce) loadAll(); connectedOnce = true; }
+      });
+    loadAll();
+    return () => { alive = false; sb.removeChannel(ch); };
   },
   async sendMessage(channel, text, name) { check(await sb.from("messages").insert({ channel, text: text.slice(0, 500), name })); },
   async deleteMessage(id) { check(await sb.from("messages").delete().eq("id", id)); },
