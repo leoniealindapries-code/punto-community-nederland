@@ -72,7 +72,28 @@ Zolang `config.js` niet is ingevuld, draait de app in **demomodus** met nepleden
 - **Route:** tik op de gekozen meetplek (🏁 of de groene kaart), dan opent Google Maps.
 - **Beveiliging:** alleen goedgekeurde leden kunnen iets lezen of schrijven. Leden kunnen zichzelf niet goedkeuren en zich niet voordoen als een ander.
 
+## Meldingen instellen (pushmeldingen)
+Leden krijgen een melding bij een **nieuwe meet** en als ze zijn **toegelaten**. Beheerders krijgen ook een melding bij een **nieuwe aanvraag** en bij een **voorgestelde meetplek**.
+
+1. **Database:** ga naar Supabase → **SQL Editor** → **New query**, plak `update-2-meldingen.sql` en klik op **Run**.
+2. **Verzendfunctie:** ga naar Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**.
+   - Naam: `notify` (precies zo, met kleine letters)
+   - Haal de voorbeeldcode weg en plak de hele inhoud van `notify-function.ts`.
+   - Klik op **Deploy function**.
+3. **JWT-controle uit:** open de functie **notify** in de lijst. Zet bij de details of instellingen **Verify JWT** (soms *Enforce JWT verification*) **uit** en sla op.
+   *Dit is veilig: de functie verstuurt alleen meldingen die de database zelf heeft klaargezet.*
+4. **App:** upload de nieuwe bestanden naar GitHub.
+5. **Activeren:** open de app en tik in **Beheer → Meldingen** op **Meldingen activeren**.
+6. **Zelf aanzetten:** tik in **Instellingen → Meldingen** op **Meldingen aanzetten** en daarna op **Testmelding**.
+
+**iPhone:** meldingen werken alleen als de app op het beginscherm staat (Safari → deel-icoon → *Zet op beginscherm*). De app legt dat zelf uit aan iPhone-gebruikers.
+
+**Komt de testmelding niet binnen?** Kijk dan in Supabase → **Edge Functions → notify → Logs**.
+- Zie je `401`? Dan staat de JWT-controle nog aan (stap 3).
+- Zie je geen enkele aanroep? Controleer dan of de functie precies `notify` heet.
+
 ## Updates
+- **Update 2 (meldingen):** zie "Meldingen instellen" hierboven. Bij een nieuwe installatie zit het al in `supabase.sql`, maar stap 2 tot en met 6 moet je dan nog wel doen.
 - **Update 1 (plekken voorstellen):** had je `supabase.sql` al uitgevoerd vóór deze update? Voer dan één keer `update-1-plekken-voorstellen.sql` uit in de SQL Editor. Bij een nieuwe installatie is dat niet nodig, want het zit al in `supabase.sql`.
 
 ## Goed om te weten

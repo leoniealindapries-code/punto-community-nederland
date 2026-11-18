@@ -134,6 +134,20 @@ export const backend = {
     check(await sb.from("spots").insert(list.map((s) => ({ name: s.name, type: s.type, lat: s.lat, lng: s.lng, approx: true, status: "approved" }))));
   },
 
+  // ---------- Pushmeldingen ----------
+  async pushPublicKey() { return check(await sb.rpc("push_public_key")) || null; },
+  async pushStatus() { return !!check(await sb.rpc("push_status")); },
+  async setupPush({ publicKey, privateJwk }) {
+    check(await sb.rpc("setup_push", {
+      p_public: publicKey, p_private: privateJwk,
+      p_function_url: SUPABASE_URL.replace(/\/+$/, "") + "/functions/v1/notify",
+      p_site_url: location.origin + location.pathname,
+    }));
+  },
+  async savePushSubscription(s) { check(await sb.rpc("save_push_subscription", { p_endpoint: s.endpoint, p_p256dh: s.p256dh, p_auth: s.auth })); },
+  async removePushSubscription(endpoint) { check(await sb.rpc("remove_push_subscription", { p_endpoint: endpoint })); },
+  async sendTestPush() { check(await sb.rpc("send_test_push")); },
+
   // ---------- Chat ----------
   watchMessages(channel, cb) {
     return live("messages", async () => {

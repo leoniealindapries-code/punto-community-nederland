@@ -125,6 +125,13 @@ export const backend = {
   async deleteSpot(id) { S.spots = S.spots.filter((s) => s.id !== id); save(); },
   async addSpotsBulk(list) { list.forEach((s) => S.spots.push({ id: nid(), ...s, approx: true })); save(); },
 
+  // Pushmeldingen werken niet in de demo
+  async pushPublicKey() { return null; },
+  async pushStatus() { return false; },
+  async setupPush() { throw new Error("Niet beschikbaar in de demo"); },
+  async savePushSubscription() {}, async removePushSubscription() {},
+  async sendTestPush() { throw new Error("Niet beschikbaar in de demo"); },
+
   watchMessages(channel, cb) { return watch(() => cb(clone(S.messages.filter((m) => m.channel === channel).slice(-150)))); },
   async sendMessage(channel, text, name) { S.messages.push({ id: nid(), channel, text: text.slice(0, 500), uid: ME, name, ts: Date.now() }); save(); },
   async deleteMessage(id) { S.messages = S.messages.filter((m) => m.id !== id); save(); },

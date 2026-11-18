@@ -1,6 +1,7 @@
 import { DEMO } from "./config.js";
 import { START_SPOTS } from "./spots-start.js";
 import { searchAreas, rankSpots, searchLiveSpots, TYPE_LABEL } from "./geo.js";
+import { pushSupported, isIOS, isStandalone, registerSW, currentSubscription, enablePush, disablePush, generateVapidKeys } from "./push.js";
 
 const { backend } = DEMO ? await import("./backend-demo.js") : await import("./backend-supabase.js");
 
@@ -169,14 +170,39 @@ async function startApp() {
   globalSubs.push(
     backend.watchMembers((m) => { st.members = m; refresh(); }),
     backend.watchLocations((l) => { st.locations = l; refresh(); }),
-    backend.watchMeets((m) => { st.meets = m; refresh(); }),
+    backend.watchMeets((m) => {
+      st.meets = m;
+      // Via een melding naar een meet die net geladen is? Dan die openen.
+      if (st.pendingMeet && m.some((x) => x.id === st.pendingMeet)) { st.meetId = st.pendingMeet; st.pendingMeet = null; st.suggest = false; go("meets"); return; }
+      refresh();
+    }),
     backend.watchSpots((s) => { st.spots = s; refresh(); }),
   );
+  registerSW();
+  navigator.serviceWorker?.addEventListener("message", (e) => { if (e.data?.type === "open") openFromHash(e.data.url); });
+  window.addEventListener("hashchange", () => openFromHash(location.hash));
+  if (openFromHash(location.hash)) return;
   go(st.priv?.area ? "kaart" : "instellingen");
   if (!st.priv?.area) toast("Stel eerst je profiel en woonwijk in 👇", 3500);
 }
 
 $$("#tabs button").forEach((b) => b.addEventListener("click", () => { st.meetId = null; st.suggest = false; go(b.dataset.tab); }));
+
+// Openen vanuit een melding: #meet-<id>, #beheer, #instellingen, ...
+function openFromHash(h) {
+  h = String(h || "").replace(/^#/, "");
+  if (!h || h.includes("=")) return false;              // bijv. wachtwoord-herstel-links niet aanraken
+  let ok = true;
+  if (h.startsWith("meet-")) {
+    const id = h.slice(5);
+    st.suggest = false;
+    if (st.meets.some((m) => m.id === id)) { st.meetId = id; go("meets"); } else { st.pendingMeet = id; go("meets"); }
+  } else if (["kaart", "meets", "chat", "instellingen"].includes(h)) { st.meetId = null; st.suggest = false; go(h); }
+  else if (h === "beheer") { st.meetId = null; go(st.isAdmin ? "beheer" : "kaart"); }
+  else ok = false;
+  if (ok) history.replaceState(null, "", location.pathname + location.search);
+  return ok;
+}
 
 function go(tab) {
   st.tab = tab;
@@ -713,6 +739,9 @@ function viewSettings() {
       <button class="btn block" id="save">Wijk & zichtbaarheid opslaan</button>
     </div>
 
+    <h2>Meldingen</h2>
+    <div class="card stack" id="pushCard"></div>
+
     <h2>Account</h2>
     <div class="card row wrap">
       <span class="small muted">${esc(st.user.email || "")}</span><span class="spacer"></span>
@@ -776,7 +805,73 @@ function viewSettings() {
   $("#logout").onclick = () => backend.signOut();
   $("#reset")?.addEventListener("click", () => { backend.resetDemo(); location.reload(); });
   paintPhoto(); paint();
+  mountPushCard($("#pushCard"));
   return { update: () => {} };
+}
+
+// ------------------------------------------------------------------ MELDINGEN
+async function mountPushCard(el) {
+  const what = st.isAdmin ? "nieuwe meets, nieuwe aanvragen en voorgestelde meetplekken" : "nieuwe meets en als je bent toegelaten";
+  el.innerHTML = `<p class="small muted" style="margin:0">Je krijgt een melding bij ${what}.</p><div id="pushState" class="stack"></div>`;
+  const box = $("#pushState", el);
+  if (backend.demo) { box.innerHTML = `<p class="small muted" style="margin:0">Niet beschikbaar in de demo.</p>`; return; }
+  if (!pushSupported()) {
+    box.innerHTML = isIOS() && !isStandalone()
+      ? `<div class="small">📱 Op de iPhone werken meldingen alleen als de app op je beginscherm staat:<br>
+           1. Tik in Safari op het <b>deel-icoon</b> (vierkantje met pijl omhoog)<br>
+           2. Kies <b>Zet op beginscherm</b><br>
+           3. Open de app via het nieuwe icoon en kom hier terug.</div>`
+      : `<p class="small muted" style="margin:0">Deze browser ondersteunt geen meldingen. Probeer Chrome, Edge, Firefox of Safari.</p>`;
+    return;
+  }
+  let key = null;
+  try { key = await backend.pushPublicKey(); } catch (e) { console.error(e); }
+  if (!key) { box.innerHTML = `<p class="small muted" style="margin:0">De beheerder heeft meldingen nog niet geactiveerd.</p>`; return; }
+  let resynced = false;
+  const paint = async () => {
+    const sub = await currentSubscription().catch(() => null);
+    const granted = Notification.permission === "granted";
+    if (sub && granted && !resynced) {           // aanmelding op de server up-to-date houden
+      resynced = true;
+      const j = sub.toJSON();
+      backend.savePushSubscription({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }).catch(() => {});
+    }
+    box.innerHTML = sub && granted
+      ? `<div><span class="chip green">✅ Meldingen staan aan op dit apparaat</span></div>
+         <div class="row wrap"><button class="btn small secondary" id="pushTest">🔔 Testmelding</button><button class="btn small ghost" id="pushOff">Uitzetten</button></div>`
+      : Notification.permission === "denied"
+        ? `<p class="small" style="margin:0">🚫 Meldingen zijn geblokkeerd voor deze app. Zet ze aan in de instellingen van je telefoon of browser en kom dan hier terug.</p>`
+        : `<button class="btn green block" id="pushOn">🔔 Meldingen aanzetten</button>`;
+    // Let op: enablePush moet direct in de klik gebeuren (eis van de iPhone)
+    $("#pushOn", box)?.addEventListener("click", () => run(async () => {
+      const s = await enablePush(key);
+      await backend.savePushSubscription(s);
+      await paint();
+    }, "Meldingen staan aan 🔔"));
+    $("#pushOff", box)?.addEventListener("click", () => run(async () => {
+      const ep = await disablePush();
+      if (ep) await backend.removePushSubscription(ep);
+      await paint();
+    }, "Meldingen uitgezet"));
+    $("#pushTest", box)?.addEventListener("click", () => run(() => backend.sendTestPush(), "Testmelding verstuurd, hij komt zo binnen"));
+  };
+  await paint();
+}
+
+async function mountPushAdmin(el) {
+  if (backend.demo) { el.innerHTML = `<p class="small muted" style="margin:0">Niet beschikbaar in de demo.</p>`; return; }
+  let on = false;
+  try { on = await backend.pushStatus(); } catch (e) { console.error(e); }
+  el.innerHTML = on
+    ? `<div><span class="chip green">✅ Meldingen zijn geactiveerd</span></div>
+       <p class="small muted" style="margin:0">Zet ze ook voor jezelf aan in <b>Instellingen → Meldingen</b> en stuur daar een testmelding.</p>`
+    : `<p class="small muted" style="margin:0">Zet eerst de Edge Function <b>notify</b> in Supabase (zie LEESMIJ.md). Klik daarna hier:</p>
+       <button class="btn green" id="pushSetup">🔔 Meldingen activeren</button>`;
+  $("#pushSetup", el)?.addEventListener("click", () => run(async () => {
+    const keys = await generateVapidKeys();
+    await backend.setupPush(keys);
+    await mountPushAdmin(el);
+  }, "Meldingen geactiveerd ✅"));
 }
 
 // ------------------------------------------------------------------ BEHEER
@@ -784,6 +879,8 @@ function viewAdmin() {
   if (!st.isAdmin) return viewMap();
   view().innerHTML = `
     <h1>Beheer</h1>
+    <h2>Meldingen</h2>
+    <div class="card stack" id="pushAdmin"></div>
     <h2>Groepscode</h2>
     <div class="card stack">
       <p class="small muted" style="margin:0">Deel deze code alleen in de WhatsApp-groep. Nieuwe leden hebben hem nodig én jij moet ze daarna nog goedkeuren. Verander de code als hij uitlekt.</p>
@@ -809,6 +906,7 @@ function viewAdmin() {
     <div class="card" id="spots"></div>`;
 
   backend.getInviteCode().then((c) => ($("#code").value = c)).catch(() => {});
+  mountPushAdmin($("#pushAdmin"));
   $("#saveCode").onclick = () => {
     const c = $("#code").value.trim();
     if (c.length < 4) return toast("Gebruik minstens 4 tekens");
